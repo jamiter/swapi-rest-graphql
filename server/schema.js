@@ -27,7 +27,9 @@ import {
 
 import {
   schema
-} from '/imports/swapi/schema.js';
+} from './swapi.js';
+
+import rp from 'request-promise';
 
 const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
   return new GraphQLObjectType({
@@ -75,7 +77,7 @@ function jsonSchemaTypeToGraphQL(jsonSchemaType, schemaName) {
         throw new Error(`no GraphQL type ${schemaName}`);
       }
 
-      return type;
+      return new GraphQLList(type);
     }
   }
 
@@ -139,21 +141,31 @@ function fetchPageOfType(typePluralName, pageNumber) {
     params.page = pageNumber;
   };
 
-  const response = HTTP.get(`http://swapi.co/api/${typePluralName}/`, { params });
-  console.log("result", response.data);
-  return response.data.results;
+  return _fetchUrl(`http://swapi.co/api/${typePluralName}/`, { params }).then((data) => {
+    // Paginated results have a different shape
+    return data.results;
+  });
 }
 
 function fetchOne(restName, id) {
-  const response = HTTP.get(`http://swapi.co/api/${restName}/${id}`);
-  return response.data;
+  return _fetchUrl(`http://swapi.co/api/${restName}/${id}`);
 }
 
 function fetchOneFromUrl(url) {
-  console.log("fetching url", url);
-  const response = HTTP.get(url);
-  console.log(response.data);
-  return response.data;
+  return _fetchUrl(url);
+}
+
+function _fetchUrl(url, options) {
+  return rp({
+    uri: url,
+    json: true,
+    qs: options && options.params,
+    transform: (res) => {
+      // uncomment below to log all results
+      // console.log(res);
+      return res;
+    }
+  });
 }
 
 // /**
