@@ -31,6 +31,8 @@ import {
 
 import rp from 'request-promise';
 
+import DataLoader from 'dataloader';
+
 const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
   return new GraphQLObjectType({
     name: jsonSchema.title,
@@ -45,7 +47,7 @@ const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
         if(propertySchema.type === 'array') {
           value.resolve = (root, args) => {
             const arrayOfUrls = root[propertyName];
-            const arrayOfResults = arrayOfUrls.map(fetchOneFromUrl);
+            const arrayOfResults = arrayOfUrls.map(restLoader.load.bind(restLoader));
             return arrayOfResults;
           }
         }
@@ -135,37 +137,30 @@ const queryType = new GraphQLObjectType({
 });
 
 function fetchPageOfType(typePluralName, pageNumber) {
-  const params = {};
+  let url = `http://swapi.co/api/${typePluralName}/`;
   if (pageNumber) {
-    params.page = pageNumber;
+    url += `?page=${pageNumber}`;
   };
 
-  return _fetchUrl(`http://swapi.co/api/${typePluralName}/`, { params }).then((data) => {
+  return restLoader.load(url).then((data) => {
     // Paginated results have a different shape
     return data.results;
   });
 }
 
 function fetchOne(restName, id) {
-  return _fetchUrl(`http://swapi.co/api/${restName}/${id}`);
+  return restLoader.load(`http://swapi.co/api/${restName}/${id}`);
 }
 
-function fetchOneFromUrl(url) {
-  return _fetchUrl(url);
-}
-
-function _fetchUrl(url, options) {
-  return rp({
-    uri: url,
-    json: true,
-    qs: options && options.params,
-    transform: (res) => {
-      // uncomment below to log all results
-      // console.log(res);
-      return res;
-    }
-  });
-}
+const restLoader = new DataLoader((urls) => {
+  console.log("Fetching batch:", urls);
+  return Promise.all(urls.map((url) => {
+    return rp({
+      uri: url,
+      json: true
+    });
+  }));
+});
 
 /**
  * Finally, we construct our schema (whose starting query type is the query
