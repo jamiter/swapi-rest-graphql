@@ -29,3 +29,8 @@ Here's an example of a query you can run:
   }
 }
 ```
+
+### Points of interest:
+
+1. Uses the SWAPI JSON schema as a starting point to avoid writing all of the resolvers and types manually
+2. Uses [Facebook's DataLoader](https://github.com/facebook/dataloader) to cache results to avoid hitting the same endpoint multiple times
