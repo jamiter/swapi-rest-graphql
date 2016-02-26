@@ -34,24 +34,55 @@ const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
     name: jsonSchema.title,
     description: jsonSchema.description,
     fields: () => {
-      return mapValues(jsonSchema.properties, (propertySchema) => {
-        return {
+      return mapValues(jsonSchema.properties, (propertySchema, propertyName) => {
+        const value = {
           description: propertySchema.description,
-          type: jsonSchemaTypeToGraphQL(propertySchema.type)
+          type: jsonSchemaTypeToGraphQL(propertySchema.type, propertyName)
         };
+
+        if(propertySchema.type === 'array') {
+          value.resolve = (root, args) => {
+            const arrayOfUrls = root[propertyName];
+            const arrayOfResults = arrayOfUrls.map(fetchOneFromUrl);
+            return arrayOfResults;
+          }
+        }
+
+        return value;
       });
     }
   })
 });
 
-function jsonSchemaTypeToGraphQL(jsonSchemaType) {
+function jsonSchemaTypeToGraphQL(jsonSchemaType, schemaName) {
+  if (jsonSchemaType === "array") {
+    if (graphQLObjectTypes[schemaName]) {
+      return new GraphQLList(graphQLObjectTypes[schemaName]);
+    } else {
+      const translated = {
+        pilots: "people",
+        characters: "people",
+        residents: "people"
+      }[schemaName];
+
+      if (! translated) {
+        throw new Error(`no type ${schemaName}`);
+      }
+
+      const type = graphQLObjectTypes[translated];
+
+      if (! type) {
+        throw new Error(`no GraphQL type ${schemaName}`);
+      }
+
+      return type;
+    }
+  }
+
   return {
     string: GraphQLString,
     date: GraphQLString,
     integer: GraphQLInt,
-
-    // In SWAPI all arrays are reference URLs
-    array: new GraphQLList(GraphQLString)
   }[jsonSchemaType];
 }
 
@@ -115,6 +146,13 @@ function fetchPageOfType(typePluralName, pageNumber) {
 
 function fetchOne(restName, id) {
   const response = HTTP.get(`http://swapi.co/api/${restName}/${id}`);
+  return response.data;
+}
+
+function fetchOneFromUrl(url) {
+  console.log("fetching url", url);
+  const response = HTTP.get(url);
+  console.log(response.data);
   return response.data;
 }
 
