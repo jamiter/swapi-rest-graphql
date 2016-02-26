@@ -21,135 +21,39 @@ import {
 } from 'graphql';
 
 import {
-  connectionArgs,
-  connectionDefinitions,
-  connectionFromArray,
-  mutationWithClientMutationId,
-  nodeDefinitions,
-} from 'graphql-relay';
+  mapValues,
+  mapKeys,
+} from 'lodash';
 
 import {
-  Mongo
-} from 'meteor/mongo';
+  schema
+} from '/imports/swapi/schema.js';
 
-import {
-  getDepObj,
-  depInvalidated
-} from './deps.js';
-
-export const Lists = new Mongo.Collection('Lists');
-export const Tasks = new Mongo.Collection('Tasks');
-
-global.Tasks = Tasks;
-
-/**
- * We get the node interface and field from the Relay library.
- *
- * The first method defines the way we resolve an ID to its object.
- * The second defines the way we resolve an object to its GraphQL type.
- */
-const {
-  nodeInterface,
-  nodeField
-} = nodeDefinitions(getObjectFromGlobalId, getGraphQLTypeFromObject);
-
-function getObjectFromGlobalId(globalId) {
-  const {typeName, id} = fromGlobalId(globalId);
-
-  if (typeName === 'List') {
-    return Lists.findOne(id);
-  } else if (typeName === 'Task') {
-    return Tasks.findOne(id);
-  } else {
-    return null;
-  }
-}
-
-function getGraphQLTypeFromObject(obj) {
-  return TaskType;
-
-  if (obj instanceof User) {
-    return userType;
-  } else if (obj instanceof Widget)  {
-    return widgetType;
-  } else {
-    return null;
-  }
-}
-
-const TaskType = new GraphQLObjectType({
-  name: 'Task',
-  description: 'A task in a todo list.',
-  fields: () => ({
-    id: globalMongoIdField('Task'),
-    text: {
-      type: GraphQLString,
-      description: 'The content of the task.',
-    },
-    completed: {
-      type: GraphQLBoolean,
-      description: 'Whether the task has been completed.',
-    },
-    _dep: mongoDepField()
-  }),
-  interfaces: [nodeInterface],
-});
-
-const ListType = new GraphQLObjectType({
-  name: 'List',
-  description: 'A todo list.',
-  fields: () => ({
-    id: globalMongoIdField('List'),
-    _id: {
-      type: GraphQLString,
-      description: 'The name of the list.',
-    },
-    name: {
-      type: GraphQLString,
-      description: 'The name of the list.',
-    },
-    tasks: {
-      type: new GraphQLList(TaskType),
-      description: 'The tasks in this todo list.',
-      resolve: (list, args) => {
-        return Tasks.find({ listId: list._id }).fetch();
-      },
-    },
-    _dep: mongoDepField()
-  }),
-  interfaces: [nodeInterface],
-});
-
-const DepType = new GraphQLObjectType({
-  name: 'Dep',
-  fields: () => ({
-    key: {
-      type: GraphQLString
-    },
-    version: {
-      type: GraphQLInt
+const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
+  return new GraphQLObjectType({
+    name: jsonSchema.title,
+    description: jsonSchema.description,
+    fields: () => {
+      return mapValues(jsonSchema.properties, (propertySchema) => {
+        return {
+          description: propertySchema.description,
+          type: jsonSchemaTypeToGraphQL(propertySchema.type)
+        };
+      });
     }
   })
 });
 
-const DepInputType = new GraphQLInputObjectType({
-  name: 'InputDep',
-  fields: () => ({
-    key: {
-      type: GraphQLString
-    },
-    version: {
-      type: GraphQLInt
-    }
-  })
-});
+function jsonSchemaTypeToGraphQL(jsonSchemaType) {
+  return {
+    string: GraphQLString,
+    date: GraphQLString,
+    integer: GraphQLInt,
 
-// /**
-//  * Define your own connection types here
-//  */
-// const {connectionType: widgetConnection} =
-//   connectionDefinitions({name: 'Widget', nodeType: widgetType});
-
+    // In SWAPI all arrays are reference URLs
+    array: new GraphQLList(GraphQLString)
+  }[jsonSchemaType];
+}
 
 /**
  * This is the type that will be the root of our query,
@@ -157,30 +61,62 @@ const DepInputType = new GraphQLInputObjectType({
  */
 const queryType = new GraphQLObjectType({
   name: 'Query',
-  fields: () => ({
-    node: nodeField,
-    allLists: {
-      type: new GraphQLList(ListType),
-      description: 'All lists.',
-      resolve: () => {
-        return Lists.find().fetch();
-      },
-    },
-    deps: {
-      type: new GraphQLList(DepType),
-      description: 'Check for invalidated deps.',
-      args: {
-        deps: {
-          type: new GraphQLList(DepInputType),
-          description: 'A list of dep tokens to check for invalidation.'
-        }
-      },
-      resolve: (obj, args) => {
-        return args.deps.filter(depInvalidated);
+  fields: () => {
+    const plural = mapValues(graphQLObjectTypes, (type, typePluralName) => {
+      return {
+        type: new GraphQLList(type),
+        description: `All ${typePluralName}.`,
+        args: {
+          page: { type: GraphQLInt }
+        },
+        resolve: (_, { page }) => {
+          return fetchPageOfType(typePluralName, page);
+        },
+      };
+    });
+
+    const singular = mapValues(mapKeys(graphQLObjectTypes, (value, key) => {
+      // Name the query people_one vehicles_one etc.
+      // Think about naming later.
+      console.log("KEY", key);
+      return key + "_one";
+    }), (type, typeQueryName) => {
+      const restName = typeQueryName.split('_')[0];
+
+      return {
+        type: type,
+        description: `One ${restName}.`,
+        args: {
+          id: { type: GraphQLString }
+        },
+        resolve: (_, { id }) => {
+          return fetchOne(restName, id);
+        },
       }
-    }
-  }),
+    });
+
+    return {
+      ...plural,
+      ...singular
+    };
+  },
 });
+
+function fetchPageOfType(typePluralName, pageNumber) {
+  const params = {};
+  if (pageNumber) {
+    params.page = pageNumber;
+  };
+
+  const response = HTTP.get(`http://swapi.co/api/${typePluralName}/`, { params });
+  console.log("result", response.data);
+  return response.data.results;
+}
+
+function fetchOne(restName, id) {
+  const response = HTTP.get(`http://swapi.co/api/${restName}/${id}`);
+  return response.data;
+}
 
 // /**
 //  * This is the type that will be the root of our mutations,
@@ -203,46 +139,3 @@ export const Schema = new GraphQLSchema({
   // Uncomment the following after adding some mutation fields:
   // mutation: mutationType
 });
-
-function globalIdField(
-  typeName?: ?string,
-  idFetcher?: (object: any, info: GraphQLResolveInfo) => string
-): GraphQLFieldConfig {
-  return {
-    name: 'id',
-    description: 'The ID of an object',
-    type: new GraphQLNonNull(GraphQLID),
-    resolve: (obj, args, info) => toGlobalId(
-      typeName != null ? typeName : info.parentType.name,
-      idFetcher ? idFetcher(obj, info) : obj.id
-    )
-  };
-}
-
-function mongoDepField() {
-  return {
-    name: 'dep',
-    description: 'Dependency key.',
-    type: DepType,
-    resolve: (obj) => {
-      return getDepObj(obj._id);
-    }
-  }
-}
-
-function globalMongoIdField(typeName) {
-  return globalIdField(typeName, mongoIdFetcher);
-}
-
-function mongoIdFetcher(obj) {
-  return obj._id;
-}
-
-function toGlobalId(typeName, id) {
-  return typeName + ':' + id;
-}
-
-function fromGlobalId(globalId) {
-  const [typeName, id] = globalId.split(':');
-  return {typeName, id};
-}
