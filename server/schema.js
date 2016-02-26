@@ -111,7 +111,6 @@ const queryType = new GraphQLObjectType({
     const singular = mapValues(mapKeys(graphQLObjectTypes, (value, key) => {
       // Name the query people_one vehicles_one etc.
       // Think about naming later.
-      console.log("KEY", key);
       return key + "_one";
     }), (type, typeQueryName) => {
       const restName = typeQueryName.split('_')[0];
@@ -168,24 +167,10 @@ function _fetchUrl(url, options) {
   });
 }
 
-// /**
-//  * This is the type that will be the root of our mutations,
-//  * and the entry point into performing writes in our schema.
-//  */
-// const mutationType = new GraphQLObjectType({
-//   name: 'Mutation',
-//   fields: () => ({
-//     // Add your own mutations here
-//   })
-// });
-
-
 /**
  * Finally, we construct our schema (whose starting query type is the query
  * type we defined above) and export it.
  */
 export const Schema = new GraphQLSchema({
   query: queryType,
-  // Uncomment the following after adding some mutation fields:
-  // mutation: mutationType
 });
