@@ -34,3 +34,7 @@ Here's an example of a query you can run:
   }
 }
 ```
+
+The server console will print a list of all of the URLs fetched. Thanks to
+[dataloader](https://github.com/facebook/dataloader), we only request each URL once instead of
+loading it for each subtree of the query.
