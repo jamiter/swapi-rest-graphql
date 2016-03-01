@@ -11,3 +11,5 @@ app.get('/', function(req, res) {
 app.use('/graphql', graphqlHTTP({ schema: Schema, graphiql: true }));
 
 app.listen(3000);
+
+console.log('Go to http://localhost:3000/graphql to run queries!');

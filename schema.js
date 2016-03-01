@@ -24,7 +24,8 @@ import rp from 'request-promise';
 
 import DataLoader from 'dataloader';
 
-const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
+// Generate a GraphQL object type for every entry in the schema
+const graphQLObjectTypes = mapValues(schema, (jsonSchema) => {
   return new GraphQLObjectType({
     name: jsonSchema.title,
     description: jsonSchema.description,
@@ -35,6 +36,7 @@ const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
           type: jsonSchemaTypeToGraphQL(propertySchema.type, propertyName)
         };
 
+        // All of the arrays in the schema happen to be references to other types
         if(propertySchema.type === 'array') {
           value.resolve = (root, args) => {
             const arrayOfUrls = root[propertyName];
@@ -49,6 +51,7 @@ const graphQLObjectTypes = mapValues(schema, (jsonSchema, k) => {
   })
 });
 
+// Convert the JSON Schema types to the actual GraphQL types in our schema
 function jsonSchemaTypeToGraphQL(jsonSchemaType, schemaName) {
   if (jsonSchemaType === "array") {
     if (graphQLObjectTypes[schemaName]) {
@@ -81,13 +84,10 @@ function jsonSchemaTypeToGraphQL(jsonSchemaType, schemaName) {
   }[jsonSchemaType];
 }
 
-/**
- * This is the type that will be the root of our query,
- * and the entry point into our schema.
- */
 const queryType = new GraphQLObjectType({
   name: 'Query',
   fields: () => {
+    // For each type, make a query to get a page of that type
     const plural = mapValues(graphQLObjectTypes, (type, typePluralName) => {
       return {
         type: new GraphQLList(type),
@@ -96,14 +96,17 @@ const queryType = new GraphQLObjectType({
           page: { type: GraphQLInt }
         },
         resolve: (_, { page }) => {
+          // Simple pagination, where you just pass the page number through to the REST API
           return fetchPageOfType(typePluralName, page);
         },
       };
     });
 
+
+    // For each type, also make a query to get just one object of that type
     const singular = mapValues(mapKeys(graphQLObjectTypes, (value, key) => {
-      // Name the query people_one vehicles_one etc.
-      // Think about naming later.
+      // Name the query people_one vehicles_one etc. not sure what the standard should be
+      // here. We could also adopt the Relay node spec
       return key + "_one";
     }), (type, typeQueryName) => {
       const restName = typeQueryName.split('_')[0];
@@ -127,6 +130,7 @@ const queryType = new GraphQLObjectType({
   },
 });
 
+// A helper to unwrap the paginated object from SWAPI
 function fetchPageOfType(typePluralName, pageNumber) {
   let url = `http://swapi.co/api/${typePluralName}/`;
   if (pageNumber) {
@@ -139,10 +143,12 @@ function fetchPageOfType(typePluralName, pageNumber) {
   });
 }
 
+// Constructs a URL from the endpoint name and object ID
 function fetchOne(restName, id) {
   return restLoader.load(`http://swapi.co/api/${restName}/${id}`);
 }
 
+// Use dataloader to batch URL requests for each layer of the query
 const restLoader = new DataLoader((urls) => {
   console.log("Fetching batch:", urls);
   return Promise.all(urls.map((url) => {
@@ -153,10 +159,7 @@ const restLoader = new DataLoader((urls) => {
   }));
 });
 
-/**
- * Finally, we construct our schema (whose starting query type is the query
- * type we defined above) and export it.
- */
+// This schema has no mutations because you can't really write to the Star Wars API.
 export const Schema = new GraphQLSchema({
   query: queryType,
 });
