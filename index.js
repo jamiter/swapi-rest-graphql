@@ -4,6 +4,10 @@ import express from 'express';
 
 const app = express();
 
+app.get('/', function(req, res) {
+  res.redirect('/graphql');
+});
+
 app.use('/graphql', graphqlHTTP({ schema: Schema, graphiql: true }));
 
 app.listen(3000);
