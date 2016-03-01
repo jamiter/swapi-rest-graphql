@@ -1,4 +1,7 @@
-Query the Star Wars API via GraphQL, simplest version.
+A GraphQL endpoint for the Star Wars API, generated from the [JSON Schema
+provided](http://swapi.co/documentation#schema).
+
+## Running
 
 Install with:
 
@@ -11,6 +14,8 @@ Run with:
 ```
 npm start
 ```
+
+## Running queries
 
 Go to the following URL in your browser to see GraphiQL:
 
@@ -29,8 +34,3 @@ Here's an example of a query you can run:
   }
 }
 ```
-
-### Points of interest:
-
-1. Uses the SWAPI JSON schema as a starting point to avoid writing all of the resolvers and types manually
-2. Uses [Facebook's DataLoader](https://github.com/facebook/dataloader) to cache results to avoid hitting the same endpoint multiple times
